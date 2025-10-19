@@ -1,0 +1,49 @@
+/* Ensure the embed area shows ocean color even where geometry doesn't cover */
+#map { background: #a6d0ff; }
+
+body {
+	font-family: Arial, Helvetica, sans-serif;
+	background: linear-gradient(180deg, #ff6b6b 0%, #ff3b3b 100%);
+}
+
+/* container that holds the visible content so it pops on the strong background */
+.page-wrapper {
+	padding: 22px;
+	display: flex;
+	justify-content: center;
+}
+
+.content-panel {
+	background: #ffffff;
+	border-radius: 8px;
+	padding: 18px;
+	box-shadow: 0 6px 18px rgba(0, 0, 0, 0.12);
+	max-width: 960px;
+	width: 100%;
+}
+
+/* Center the map area */
+.container {
+	display: flex;
+	justify-content: center;
+	align-items: flex-start;
+	gap: 1rem;
+}
+
+/* fix the visualization column to the same pixel width so embedded specs can use container sizing */
+.map-area { width: 900px; }
+
+#map, #bar {
+	width: 100%;
+	margin: 0 auto;
+}
+
+/* bar chart should align with the map width and be centered */
+#bar {
+	margin: 0 auto;
+	background: #fff;
+	margin-top: 1rem; /* moved from inline style */
+}
+
+/* moved from inline style on h1 */
+h1 { text-align: center; }
