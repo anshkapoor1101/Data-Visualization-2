@@ -8,6 +8,51 @@ let globalMaxTotal = 0;
 let globalBreaks = [];
 let colorRange = [];
 
+// Normalize CSV country names to match TopoJSON country NAMEs (Natural Earth)
+function normalizeCountryForMap(name) {
+  if (!name) return name;
+  const n = String(name).trim().toLowerCase();
+  switch (n) {
+    case 'united states':
+    case 'usa':
+    case 'u.s.a.':
+    case 'united states of america':
+      return 'United States of America';
+    case 'russia':
+    case 'russian federation':
+    case 'roc':
+      return 'Russia';
+    case 'czechia':
+      return 'Czech Republic';
+    case "côte d'ivoire":
+    case 'cote d\'ivoire':
+    case 'cote divoire':
+      return 'Ivory Coast';
+    case 'korea': // Olympics dataset uses 'Korea' for South Korea
+    case 'south korea':
+      return 'South Korea';
+    case 'syrian arab republic':
+      return 'Syria';
+    case 'hong kong, china':
+      return 'Hong Kong';
+    case 'chinese taipei':
+      return 'Taiwan';
+    case 'great britain':
+    case 'uk':
+    case 'u.k.':
+    case 'united kingdom':
+      return 'United Kingdom';
+    case 'north macedonia':
+    case 'macedonia':
+      return 'North Macedonia';
+    case 'serbia and montenegro':
+      return 'Serbia'; // best-effort mapping for legacy combined NOC
+    default:
+      // Title-case fallback to preserve existing exact matches
+      return name;
+  }
+}
+
 // load CSV once and populate controls
 Papa.parse('./data/olympic_games.csv', {
   header: true,
@@ -166,7 +211,7 @@ function aggregateByCountry(year, season) {
     const silver = Number(r.silver) || 0;
     const bronze = Number(r.bronze) || 0;
     const total = gold + silver + bronze;
-    if (!map.has(c)) map.set(c, {country: c, gold: 0, silver:0, bronze:0, total:0});
+    if (!map.has(c)) map.set(c, {country: c, country_norm: normalizeCountryForMap(c), gold: 0, silver:0, bronze:0, total:0});
     const cur = map.get(c);
     cur.gold += gold; cur.silver += silver; cur.bronze += bronze; cur.total += total;
   });
@@ -188,14 +233,14 @@ async function updateAndRender() {
       "field": "totalMedals",
       "type": "quantitative",
       "scale": {"type": "threshold", "domain": globalBreaks, "range": colorRange},
-      "legend": {"title": "Total medals","orient":"right","format":"d","labelExpr":"datum.value"}
+      "legend": {"title": "Total medals","orient":"right","format":"d","labelExpr":"datum.value","labelFontSize":13,"titleFontSize":14}
     }
     :
     {
       "field": "totalMedals",
       "type": "quantitative",
       "scale": {"scheme":"inferno","type":"sqrt","domain":[0, globalMaxTotal]},
-      "legend": {"title":"Total medals","orient":"right","format":"d","tickCount":6}
+      "legend": {"title":"Total medals","orient":"right","format":"d","tickCount":6,"labelFontSize":13,"titleFontSize":14}
     };
 
   const spec = {
@@ -218,7 +263,7 @@ async function updateAndRender() {
         "transform": [
           {
             "lookup": "properties.NAME",
-            "from": { "data": {"values": aggregated}, "key": "country", "fields": ["gold","silver","bronze","total"] }
+            "from": { "data": {"values": aggregated}, "key": "country_norm", "fields": ["gold","silver","bronze","total"] }
           },
           {"calculate": "(datum.gold || 0) + (datum.silver || 0) + (datum.bronze || 0)", "as": "totalMedals"},
           {"calculate": "datum.gold == null ? 'Did not participate' : null", "as": "participation_note"},
@@ -269,6 +314,14 @@ function renderBarChart(N) {
   "data": {"values": top},
     // compute mean separately for annotation layers where needed
     "autosize": {"type":"fit", "contains": "padding"},
+    "config": {
+      "axis": {
+        "labelFontSize": 13,
+        "titleFontSize": 14,
+        "labelColor": "#2b1f07",
+        "titleColor": "#2b1f07"
+      }
+    },
     "layer": [
       {
         "mark": "bar",
@@ -287,7 +340,7 @@ function renderBarChart(N) {
       },
       {
         // numeric label at end of each bar for chosen metric
-        "mark": {"type":"text", "align":"left", "dx":6, "dy":0, "fontSize":11},
+        "mark": {"type":"text", "align":"left", "dx":6, "dy":0, "fontSize":13, "fontWeight": "bold"},
         "encoding": {
           "y": {"field": "country", "type": "ordinal", "sort": "-x", "title": null},
           "x": {"field": metric, "type": "quantitative"},
@@ -306,7 +359,7 @@ function renderBarChart(N) {
       {
         // label for mean line
         "transform": [{"aggregate": [{"op": "mean", "field": metric, "as": "meanMetric"}]}],
-  "mark": {"type": "text", "align": "left", "dx":6, "dy":-6, "fontSize":12, "color": "#a17e2c", "fontWeight": "bold"},
+  "mark": {"type": "text", "align": "left", "dx":6, "dy":-6, "fontSize":13, "color": "#a17e2c", "fontWeight": "bold"},
         "encoding": {
           "x": {"field": "meanMetric", "type": "quantitative"},
           // place label at top of plot (use a constant pixel y)
@@ -338,12 +391,20 @@ function renderBubbleChart(year, season) {
     "width": "container",
     "height": 320,
     "data": {"values": rows},
+    "config": {
+      "axis": {
+        "labelFontSize": 13,
+        "titleFontSize": 14,
+        "labelColor": "#2b1f07",
+        "titleColor": "#2b1f07"
+      }
+    },
     "mark": {"type": "circle", "opacity": 0.8, "stroke": "#fff", "strokeWidth": 0.8},
     "encoding": {
       "x": {"field": "idx", "type": "quantitative", "title": "Country Index"},
       "y": {"field": "total", "type": "quantitative", "title": "Total Medals"},
       "size": {"field": "total", "type": "quantitative", "legend": null, "scale": {"range": [40, 900]}},
-      "color": {"field": "total", "type": "quantitative", "scale": {"scheme": "oranges"}, "legend": {"title": "Total medals", "orient": "right"}},
+      "color": {"field": "total", "type": "quantitative", "scale": {"scheme": "oranges"}, "legend": {"title": "Total medals", "orient": "right", "labelFontSize": 13, "titleFontSize": 14}},
       "tooltip": [
         {"field": "country", "type": "nominal"},
         {"field": "total", "type": "quantitative"}

@@ -92,8 +92,9 @@
       margin-bottom: 2rem;
       font-family: 'Bebas Neue', sans-serif;
       letter-spacing: 0.5px;
-      font-size: clamp(2.2rem, 4.5vw, 3.25rem);
-      line-height: 1.1;
+      font-size: clamp(3rem, 6.5vw, 4.5rem);
+      font-weight: 700;
+      line-height: 1.05;
       color: #2b1f07;
     }
 
@@ -177,6 +178,32 @@
     .chart-layout {
       margin-top: 1rem;
     }
+
+    /* Donut section: country selector styling */
+    .chart-controls {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin-bottom: 0.5rem;
+      flex-wrap: wrap;
+    }
+    .chart-controls label {
+      font-size: 1rem;
+      font-weight: 600;
+      color: #2b1f07;
+    }
+    #countrySelect {
+      font-size: 1.05rem;
+      padding: 8px 12px;
+      min-width: 200px;
+      background: #fffaf0;
+      border: 1px solid #e5dcc7;
+      border-radius: 10px;
+      color: #2b1f07;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.06) inset, 0 1px 2px rgba(0,0,0,0.04);
+    }
+    #countrySelect:hover { border-color: #d9cfb6; }
+    #countrySelect:focus { outline: none; border-color: #b98c00; box-shadow: 0 0 0 3px rgba(185,140,0,0.15); }
 
     /* Donut row beside the main donut */
     .donut-left-grid {
