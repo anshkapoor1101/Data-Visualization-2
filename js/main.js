@@ -1,6 +1,7 @@
 // Variables to hold parsed CSV and aggregated data
 let csvData = null;
 let aggregated = [];
+let populationData = null;
 // global maximum total medals across all years/seasons/countries (used to keep legend range fixed)
 let globalMaxTotal = 0;
 // quantile breaks (threshold domains) and color range for binned legend
@@ -17,7 +18,20 @@ Papa.parse('./data/olympic_games.csv', {
     computeGlobalMaxTotal();
     computeGlobalQuantileBreaks(6); // default to 6 classes
     populateFilters(csvData);
-    updateAndRender();
+    // Load population data before first render (needed for per-capita chart)
+    Papa.parse('./data/population.csv', {
+      header: true,
+      download: true,
+      dynamicTyping: true,
+      complete: function(popRes) {
+        populationData = popRes.data;
+        updateAndRender();
+      },
+      error: function(err) {
+        console.warn('Failed to load population.csv:', err);
+        updateAndRender(); // Render without per-capita if population missing
+      }
+    });
   }
 });
 
@@ -139,6 +153,7 @@ function populateFilters(data) {
     updateAndRender();
   });
   seasonSelect.addEventListener('change', updateAndRender);
+
 }
 
 // Aggregate medals by country for current filters
@@ -188,15 +203,9 @@ async function updateAndRender() {
     "width": "container",
     "height": 520,
     "autosize": {"type": "fit", "contains": "padding"},
-    "background": "#a6d0ff",
+  "background": "#a6d0ff",
     "projection": {"type": "equalEarth"},
     "layer": [
-      {
-        // ocean/background layer (from uploaded topojson)
-        "data": {"url": "./js/ne_110m_ocean.json", "format": {"type":"topojson","feature":"ne_110m_ocean"}},
-        "mark": {"type":"geoshape", "fill": "#a6d0ff", "stroke": null},
-        "encoding": {}
-      },
       {
         "data": {"url": "./js/ne_110m.topojson", "format": {"type":"topojson","feature":"countries"}},
         "transform": [{"calculate": "'Data is not available in ' + datum.properties.NAME", "as":"note"}],
@@ -228,11 +237,17 @@ async function updateAndRender() {
   };
 
   // embed the Vega-Lite map (Vega's built-in legend will be used)
-  vegaEmbed('#map', spec, {actions:false}).then(function(mapResult) {
-    // render bar under map and align widths
-    try { renderBarChart(10); } catch(e) { console.error('renderBarChart error', e); }
-    return mapResult;
-  }).catch(console.error);
+  vegaEmbed('#map', spec, {actions:false})
+    .catch(err => { console.warn('Map failed to render:', err); })
+    .finally(() => {
+      // Render all other charts regardless of map success
+      try { renderBarChart(10); } catch(e) { console.error('renderBarChart error', e); }
+      try { renderBubbleChart(year, season); } catch(e) { console.error('renderBubbleChart error', e); }
+      try { populateCountryDropdownAndRenderDonut(year, season); } catch(e) { console.error('renderDonutChart error', e); }
+      try { renderGlobalDonut(year, season); } catch(e) { console.error('renderGlobalDonut error', e); }
+      try { renderHostVsRestDonut(year, season); } catch(e) { console.error('renderHostVsRestDonut error', e); }
+      try { renderTopShareDonut(year, season); } catch(e) { console.error('renderTopShareDonut error', e); }
+    });
 }
 
 // Render a Top-N horizontal bar chart of countries by total medals for current filters
@@ -247,6 +262,7 @@ function renderBarChart(N) {
   const top = aggregated.slice().sort((a,b) => ((b[metric]||0) - (a[metric]||0))).slice(0, N);
   const barSpec = {
     "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
+  "background": "#f6eedc",
     "width": "container",
     "height": Math.min(50 + top.length * 25, 400),
     "autosize": {"type": "fit", "contains": "padding"},
@@ -282,7 +298,7 @@ function renderBarChart(N) {
       {
         // vertical mean line (aggregate to single datum) for chosen metric
         "transform": [{"aggregate": [{"op": "mean", "field": metric, "as": "meanMetric"}]}],
-        "mark": {"type": "rule", "color": "red", "strokeWidth": 2},
+  "mark": {"type": "rule", "color": "#c8a96a", "strokeWidth": 2},
         "encoding": {
           "x": {"field": "meanMetric", "type": "quantitative"}
         }
@@ -290,7 +306,7 @@ function renderBarChart(N) {
       {
         // label for mean line
         "transform": [{"aggregate": [{"op": "mean", "field": metric, "as": "meanMetric"}]}],
-        "mark": {"type": "text", "align": "left", "dx":6, "dy":-6, "fontSize":12, "color": "red", "fontWeight": "bold"},
+  "mark": {"type": "text", "align": "left", "dx":6, "dy":-6, "fontSize":12, "color": "#a17e2c", "fontWeight": "bold"},
         "encoding": {
           "x": {"field": "meanMetric", "type": "quantitative"},
           // place label at top of plot (use a constant pixel y)
@@ -305,4 +321,344 @@ function renderBarChart(N) {
   // no metric selector — chart always displays Total medals
 }
 
-// (No manual legend; rely on Vega's built-in legend positioned to the right)
+
+// Safe stub for bubble chart to avoid errors if not implemented yet
+function renderBubbleChart(year, season) {
+  const el = document.getElementById('bubble');
+  if (!el) return;
+  if (!aggregated) { el.innerHTML = ''; return; }
+  // Scatter: Total medals vs index (sorted by total for clarity)
+  const rows = aggregated
+    .slice()
+    .sort((a,b) => (b.total||0) - (a.total||0))
+    .map((d, i) => ({ country: d.country, total: d.total, idx: i+1 }));
+  const spec = {
+    "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
+  "background": "#f6eedc",
+    "width": "container",
+    "height": 320,
+    "data": {"values": rows},
+    "mark": {"type": "circle", "opacity": 0.8, "stroke": "#fff", "strokeWidth": 0.8},
+    "encoding": {
+      "x": {"field": "idx", "type": "quantitative", "title": "Country Index"},
+      "y": {"field": "total", "type": "quantitative", "title": "Total Medals"},
+      "size": {"field": "total", "type": "quantitative", "legend": null, "scale": {"range": [40, 900]}},
+      "color": {"field": "total", "type": "quantitative", "scale": {"scheme": "oranges"}, "legend": {"title": "Total medals", "orient": "right"}},
+      "tooltip": [
+        {"field": "country", "type": "nominal"},
+        {"field": "total", "type": "quantitative"}
+      ]
+    }
+  };
+  vegaEmbed('#bubble', spec, {actions:false}).catch(console.error);
+}
+
+// Populate country dropdown and render donut chart
+function populateCountryDropdownAndRenderDonut(year, season) {
+  const sel = document.getElementById('countrySelect');
+  const donutEl = document.getElementById('donut');
+  if (!sel || !donutEl) return; // section may not exist
+  // countries with at least one medal
+  const medalists = aggregated
+    .filter(d => (d.total||0) > 0)
+    .sort((a,b) => b.total - a.total)
+    .map(d => d.country);
+
+  // preserve current selection if still available
+  const prev = sel.value;
+  sel.innerHTML = '';
+  medalists.forEach(c => {
+    const opt = document.createElement('option'); opt.value = c; opt.text = c; sel.appendChild(opt);
+  });
+  if (medalists.length === 0) {
+    donutEl.innerHTML = '<div style="padding:12px;color:#666">No medal-winning countries for this selection.</div>';
+    return;
+  }
+  // pick previous if still present, else first
+  const idx = medalists.indexOf(prev);
+  sel.value = idx >= 0 ? prev : medalists[0];
+
+  // wire change handler (idempotent: remove existing then add)
+  sel.onchange = () => renderDonutChart(year, season, sel.value);
+  renderDonutChart(year, season, sel.value);
+}
+
+// Donut chart: medal composition for a single country
+function renderDonutChart(year, season, country) {
+  const el = document.getElementById('donut');
+  if (!el) return;
+  if (!aggregated || !country) { el.innerHTML = ''; return; }
+  const rec = aggregated.find(d => d.country === country);
+  if (!rec) { el.innerHTML = '<div style="padding:12px;color:#666">No data for ' + country + '.</div>'; return; }
+  const rows = [
+    { type: 'Gold', value: rec.gold || 0 },
+    { type: 'Silver', value: rec.silver || 0 },
+    { type: 'Bronze', value: rec.bronze || 0 }
+  ];
+  const hasAny = rows.some(r => r.value > 0);
+  if (!hasAny) { el.innerHTML = '<div style="padding:12px;color:#666">' + country + ' has no medals.</div>'; return; }
+
+  const spec = {
+    "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
+  "background": "#f6eedc",
+  "width": 500,
+  "height": 380,
+    "data": {"values": rows},
+  "mark": {"type": "arc", "innerRadius": 110, "outerRadius": 185, "stroke": "#fff"},
+    "encoding": {
+      "theta": {"field": "value", "type": "quantitative"},
+      "color": {"field": "type", "type": "nominal", "scale": {"domain": ["Gold","Silver","Bronze"], "range": ["#FFD700", "#C0C0C0", "#CD7F32"]},
+        "legend": {"title": "Medals", "orient": "right", "labelFontSize": 15, "titleFontSize": 16, "symbolSize": 220, "symbolStrokeColor": "#fff", "symbolStrokeWidth": 0.5}
+      },
+      "tooltip": [
+        {"field": "type", "type": "nominal"},
+        {"field": "value", "type": "quantitative", "title": "Medals"}
+      ]
+    },
+    "view": {"stroke": null}
+  };
+  vegaEmbed('#donut', spec, {actions:false}).catch(console.error);
+  try {
+    // Fill stats chips under the big donut
+    const statsEl = document.getElementById('donut-stats');
+    if (statsEl) {
+      const total = (rec.total||0);
+      statsEl.innerHTML = `
+        <span class="stat-chip gold">Gold: ${rec.gold||0}</span>
+        <span class="stat-chip silver">Silver: ${rec.silver||0}</span>
+        <span class="stat-chip bronze">Bronze: ${rec.bronze||0}</span>
+        <span class="stat-chip total">Total: ${total}</span>
+      `;
+    }
+  } catch(e) { /* no-op */ }
+}
+
+// Donut A: Global medal mix (sum of gold/silver/bronze across all countries for current filters)
+function renderGlobalDonut(year, season) {
+  const el = document.getElementById('donut-global');
+  if (!el) return;
+  if (!aggregated || aggregated.length === 0) { el.innerHTML = '<div style="padding:8px;color:#666">No data.</div>'; return; }
+  const totals = aggregated.reduce((acc, d) => {
+    acc.gold += d.gold||0; acc.silver += d.silver||0; acc.bronze += d.bronze||0; return acc;
+  }, {gold:0,silver:0,bronze:0});
+  const rows = [
+    { type: 'Gold', value: totals.gold },
+    { type: 'Silver', value: totals.silver },
+    { type: 'Bronze', value: totals.bronze }
+  ];
+  const spec = {
+    "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
+    "background": "#f6eedc",
+    "width": 260,
+    "height": 210,
+    "data": {"values": rows},
+    "transform": [
+      {"joinaggregate": [{"op": "sum", "field": "value", "as": "sumValue"}]},
+      {"calculate": "(datum.value / datum.sumValue) * 100", "as": "percent"}
+    ],
+    "mark": {"type": "arc", "innerRadius": 60, "outerRadius": 95, "stroke": "#fff", "strokeWidth": 1},
+    "encoding": {
+      "theta": {"field": "value", "type": "quantitative"},
+      "color": {"field": "type", "type": "nominal", "scale": {"domain": ["Gold","Silver","Bronze"], "range": ["#FFD700", "#C0C0C0", "#CD7F32"]},
+        "legend": {"title": "Global Mix", "orient": "bottom", "labelFontSize": 14, "titleFontSize": 15, "symbolSize": 180}
+      },
+      "tooltip": [
+        {"field": "type", "type": "nominal"},
+        {"field": "value", "type": "quantitative", "title": "Medals"},
+        {"field": "percent", "type": "quantitative", "format": ".1f", "title": "%"}
+      ]
+    },
+    "view": {"stroke": null}
+  };
+  vegaEmbed(el, spec, {actions:false}).catch(console.error);
+}
+
+// Donut B: Host vs Rest share
+function renderHostVsRestDonut(year, season) {
+  const el = document.getElementById('donut-host');
+  if (!el) return;
+  if (!csvData || !aggregated) { el.innerHTML=''; return; }
+  // Find host country for this edition
+  const hostRow = csvData.find(d => d.year==year && d.games_type==season);
+  const host = hostRow ? hostRow.host_country : null;
+  let hostTotal = 0, restTotal = 0;
+  aggregated.forEach(d => {
+    if (host && d.country === host) hostTotal += d.total||0; else restTotal += d.total||0;
+  });
+  const rows = [
+    { type: host ? `Host: ${host}` : 'Host', value: hostTotal },
+    { type: 'Rest of Countries', value: restTotal }
+  ];
+  const spec = {
+    "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
+    "background": "#f6eedc",
+    "width": 260,
+    "height": 210,
+    "data": {"values": rows},
+    "transform": [
+      {"joinaggregate": [{"op": "sum", "field": "value", "as": "sumValue"}]},
+      {"calculate": "(datum.value / datum.sumValue) * 100", "as": "percent"}
+    ],
+    "mark": {"type": "arc", "innerRadius": 60, "outerRadius": 95, "stroke": "#fff", "strokeWidth": 1},
+    "encoding": {
+      "theta": {"field": "value", "type": "quantitative"},
+      "color": {"field": "type", "type": "nominal", "scale": {"range": ["#8a6a1f", "#e3cf8c"]},
+        "legend": {"title": "Host vs Rest", "orient": "bottom", "labelFontSize": 14, "titleFontSize": 15, "symbolSize": 180}
+      },
+      "tooltip": [
+        {"field": "type", "type": "nominal"},
+        {"field": "value", "type": "quantitative", "title": "Total Medals"},
+        {"field": "percent", "type": "quantitative", "format": ".1f", "title": "%"}
+      ]
+    },
+    "view": {"stroke": null}
+  };
+  vegaEmbed(el, spec, {actions:false}).catch(console.error);
+}
+
+// Donut C: Share of top 5 countries vs others
+function renderTopShareDonut(year, season) {
+  const el = document.getElementById('donut-topshare');
+  if (!el) return;
+  if (!aggregated || aggregated.length===0) { el.innerHTML = '<div style="padding:8px;color:#666">No data.</div>'; return; }
+  const sorted = aggregated.slice().sort((a,b)=> (b.total||0) - (a.total||0));
+  const top5 = sorted.slice(0,5);
+  const topTotal = top5.reduce((s,d)=>s+(d.total||0),0);
+  const restTotal = sorted.slice(5).reduce((s,d)=>s+(d.total||0),0);
+  const rows = [
+    { type: 'Top 5', value: topTotal },
+    { type: 'Others', value: restTotal }
+  ];
+  const spec = {
+    "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
+    "background": "#f6eedc",
+    "width": 260,
+    "height": 210,
+    "data": {"values": rows},
+    "transform": [
+      {"joinaggregate": [{"op": "sum", "field": "value", "as": "sumValue"}]},
+      {"calculate": "(datum.value / datum.sumValue) * 100", "as": "percent"}
+    ],
+    "mark": {"type": "arc", "innerRadius": 60, "outerRadius": 95, "stroke": "#fff", "strokeWidth": 1},
+    "encoding": {
+      "theta": {"field": "value", "type": "quantitative"},
+      "color": {"field": "type", "type": "nominal", "scale": {"range": ["#4c78a8", "#b0c7de"]},
+        "legend": {"title": "Top 5 Share", "orient": "bottom", "labelFontSize": 14, "titleFontSize": 15, "symbolSize": 180}
+      },
+      "tooltip": [
+        {"field": "type", "type": "nominal"},
+        {"field": "value", "type": "quantitative", "title": "Total Medals"},
+        {"field": "percent", "type": "quantitative", "format": ".1f", "title": "%"}
+      ]
+    },
+    "view": {"stroke": null}
+  };
+  vegaEmbed(el, spec, {actions:false}).catch(console.error);
+}
+
+
+// New Chart 2: Medal Composition (Stacked Bar Chart)
+function renderStackedBarChart(year, season) {
+  const el = document.getElementById('stacked-bar-chart');
+  if (!el || !aggregated) { el.innerHTML = ''; return; }
+
+  const top10 = aggregated.slice().sort((a, b) => b.total - a.total).slice(0, 10);
+
+  if (top10.length === 0) {
+    el.innerHTML = '<div style="padding:12px;color:#666">No data for this selection.</div>';
+    return;
+  }
+
+  const spec = {
+    "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
+    "width": "container",
+    "height": 300,
+    "data": {"values": top10},
+    "transform": [
+      {"fold": ["gold", "silver", "bronze"], "as": ["medal_type", "count"]}
+    ],
+    "mark": "bar",
+    "encoding": {
+      "y": {"field": "country", "type": "ordinal", "sort": {"op": "sum", "field": "count", "order": "descending"}, "title": null},
+      "x": {"field": "count", "type": "quantitative", "title": "Medal Count"},
+      "color": {
+        "field": "medal_type",
+        "type": "nominal",
+        "scale": {"domain": ["gold", "silver", "bronze"], "range": ["#FFD700", "#C0C0C0", "#CD7F32"]},
+        "title": "Medal Type"
+      },
+      "tooltip": [
+        {"field": "country", "type": "nominal"},
+        {"field": "medal_type", "type": "nominal"},
+        {"field": "count", "type": "quantitative"}
+      ]
+    }
+  };
+  vegaEmbed(el, spec, {actions: false}).catch(console.error);
+}
+
+// New Chart 3: Medals Per Capita (Bar Chart)
+function renderPerCapitaBarChart(year, season) {
+  const el = document.getElementById('per-capita-bar-chart');
+  if (!el || !populationData || !aggregated) { el.innerHTML = ''; return; }
+
+  const popMap = new Map();
+  const yStr = String(year);
+  populationData.forEach(r => {
+    if (r && String(r['Year'] || r['year']).trim() === yStr) {
+      const name = (r['Country Name'] || r['country'] || '').trim();
+      const val = Number(r['Value'] || r['value']);
+      if (name && !isNaN(val) && val > 0) popMap.set(name, val);
+    }
+  });
+  
+  function normalize(name) {
+    if (!name) return name;
+    return name.replace('United States of America','United States')
+      .replace('ROC','Russian Federation')
+      .replace('Czechia','Czech Republic')
+      .replace('Hong Kong, China','Hong Kong SAR, China')
+      .replace('Great Britain','United Kingdom')
+      .replace("Côte d'Ivoire","Cote d'Ivoire");
+  }
+
+  const perCapitaData = [];
+  aggregated.forEach(d => {
+    const pop = popMap.get(d.country) || popMap.get(normalize(d.country));
+    if (pop) {
+      perCapitaData.push({
+        country: d.country,
+        total: d.total,
+        population: pop,
+        medals_per_million: (d.total / pop) * 1000000
+      });
+    }
+  });
+
+  const top10 = perCapitaData.sort((a, b) => b.medals_per_million - a.medals_per_million).slice(0, 10);
+
+  if (top10.length === 0) {
+    el.innerHTML = '<div style="padding:12px;color:#666">No population-matching data.</div>';
+    return;
+  }
+
+  const spec = {
+    "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
+    "width": "container",
+    "height": 300,
+    "data": {"values": top10},
+    "mark": "bar",
+    "encoding": {
+      "y": {"field": "country", "type": "ordinal", "sort": "-x", "title": null},
+      "x": {"field": "medals_per_million", "type": "quantitative", "title": "Medals per Million People"},
+      "color": {"value": "#1f77b4"},
+      "tooltip": [
+        {"field": "country", "type": "nominal"},
+        {"field": "medals_per_million", "type": "quantitative", "format": ".3f"},
+        {"field": "total", "type": "quantitative", "title": "Total Medals"},
+        {"field": "population", "type": "quantitative", "format": ","}
+      ]
+    }
+  };
+  vegaEmbed(el, spec, {actions: false}).catch(console.error);
+}

@@ -7,32 +7,364 @@
   <script src="https://cdn.jsdelivr.net/npm/vega@5"></script>
   <script src="https://cdn.jsdelivr.net/npm/vega-lite@5"></script>
   <script src="https://cdn.jsdelivr.net/npm/vega-embed@6"></script>
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@500;700&family=DM+Sans:wght@400;500&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&display=swap" rel="stylesheet">
+
   <link rel="stylesheet" href="main.css">
+
+  <style>
+    /* --- Split Layout Styling --- */
+    .split-layout {
+      display: grid;
+      grid-template-columns: 2fr 1fr; /* 2/3 graph, 1/3 text */
+      gap: 2rem;
+      align-items: stretch; /* make both boxes equal height */
+      margin-bottom: 3rem;
+      padding: 1.5rem 0;
+      border-bottom: 1px solid #ddd;
+    }
+
+    .chart-section {
+      background: #fffaf0;
+      padding: 1rem;
+      border-radius: 16px;
+      box-shadow: 0 3px 10px rgba(0,0,0,0.08);
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .text-section {
+      background: #f8e8b0;
+      padding: 1.5rem;
+      border-radius: 16px;
+      box-shadow: 0 3px 10px rgba(0,0,0,0.05);
+      font-family: 'DM Sans', sans-serif;
+      color: #333;
+      line-height: 1.7;
+      font-size: 1.1rem; /* slightly larger body text in notes */
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .text-section h2 {
+      font-family: 'Poppins', sans-serif;
+      font-weight: 700;
+      font-size: 1.35rem; /* larger subheading in notes */
+      color: #1a1a1a;
+      margin-bottom: 0.8rem;
+    }
+
+    .text-section p {
+      margin-bottom: 1rem;
+    }
+    .text-section p:last-child { margin-bottom: 0; }
+
+    .text-section strong {
+      color: #d32f2f; /* Olympic red accent */
+    }
+
+    .chart-container h2 {
+      font-family: 'Poppins', sans-serif;
+      margin-bottom: 1rem;
+    }
+
+    @media (max-width: 900px) {
+      .split-layout {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    body {
+      font-family: 'Poppins', sans-serif;
+      background: #f8e8b0; /* lighter goldenish */
+      color: #222;
+      margin: 0; /* remove default margins to allow full-width */
+    }
+
+    h1 {
+      text-align: center;
+      margin-bottom: 2rem;
+      font-family: 'Bebas Neue', sans-serif;
+      letter-spacing: 0.5px;
+      font-size: clamp(2.2rem, 4.5vw, 3.25rem);
+      line-height: 1.1;
+      color: #2b1f07;
+    }
+
+    .controls {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      margin-bottom: 2rem;
+      justify-content: flex-start;
+      flex-wrap: wrap;
+    }
+    .controls label { font-size: 1rem; font-weight: 600; color: #2b1f07; }
+
+    /* Larger, more accessible year slider */
+    #yearSlider {
+      width: 340px;
+      height: 16px; /* affects Firefox */
+      background: transparent;
+      cursor: pointer;
+    }
+    /* WebKit/Blink */
+    #yearSlider::-webkit-slider-runnable-track {
+      height: 12px;
+      background: #e5dcc7;
+      border-radius: 999px;
+    }
+    #yearSlider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 22px;
+      height: 22px;
+      margin-top: -5px; /* center on 12px track */
+      background: #d4a017; /* warm gold */
+      border: 2px solid rgba(0,0,0,0.15);
+      border-radius: 50%;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.2);
+    }
+    #yearSlider:focus { outline: none; }
+    #yearSlider:focus-visible { outline: 2px solid #b98c00; outline-offset: 2px; }
+
+    /* Firefox */
+    #yearSlider::-moz-range-track {
+      height: 12px;
+      background: #e5dcc7;
+      border-radius: 999px;
+    }
+    #yearSlider::-moz-range-thumb {
+      width: 22px;
+      height: 22px;
+      background: #d4a017;
+      border: 2px solid rgba(0,0,0,0.15);
+      border-radius: 50%;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.2);
+    }
+
+    /* Helper text and value styling */
+    .slider-helper { font-size: 1rem; color: #5b4a24; }
+    #yearValue { font-weight: 600; font-size: 1.05rem; }
+
+    /* Season dropdown styling */
+    #seasonSelect {
+      font-size: 1.05rem;
+      padding: 8px 12px;
+      min-width: 160px;
+      background: #fffaf0;
+      border: 1px solid #e5dcc7;
+      border-radius: 10px;
+      color: #2b1f07;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.06) inset, 0 1px 2px rgba(0,0,0,0.04);
+    }
+    #seasonSelect:hover { border-color: #d9cfb6; }
+    #seasonSelect:focus { outline: none; border-color: #b98c00; box-shadow: 0 0 0 3px rgba(185,140,0,0.15); }
+
+    .page-wrapper {
+      max-width: none; /* allow full-width */
+      width: 100%;
+      margin: 0;
+      padding: 1rem 2rem; /* small side padding while using full width */
+    }
+
+    .chart-layout {
+      margin-top: 1rem;
+    }
+
+    /* Donut row beside the main donut */
+    .donut-left-grid {
+      display: grid;
+      grid-template-columns: 3fr 2fr; /* give more width to donut, less to text */
+      gap: 1rem;
+      align-items: center;
+      margin-top: 0.5rem;
+    }
+
+    /* Make the text consume less space in the donut section */
+    .donut-left-grid .text-section {
+      font-size: 1rem; /* slightly smaller */
+      max-width: 46ch; /* keep paragraphs narrow for readability */
+    }
+
+  .big-donut { background: #fffaf0; border: 1px solid #e5dcc7; border-radius: 12px; padding: 0.5rem; display:flex; flex-direction: column; align-items: center; }
+  .donut-stats { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; justify-content: center; }
+  .stat-chip { padding: 6px 10px; border-radius: 999px; font-size: 1rem; line-height: 1; border: 1px solid rgba(0,0,0,0.06); }
+  .stat-chip.gold { background: #fff5bf; color: #7a5d00; }
+  .stat-chip.silver { background: #f2f2f2; color: #555; }
+  .stat-chip.bronze { background: #f6e0cc; color: #6b3e20; }
+  .stat-chip.total { background: #efe6cf; color: #4a3d14; }
+
+    .donut-right {
+      display: grid;
+      grid-template-rows: auto auto auto;
+      gap: 1rem;
+      align-content: start;
+    }
+
+    .mini-card {
+      background: #fffaf0;
+      border: 1px solid #e5dcc7;
+      border-radius: 12px;
+      padding: 0.75rem;
+    }
+
+    .mini-card h3 {
+      margin: 0 0 0.5rem 0;
+      font-family: 'Poppins', sans-serif;
+      font-size: 1.05rem;
+      letter-spacing: 0.1px;
+    }
+
+    .mini-desc {
+      margin: 0.15rem 0 0.6rem 0;
+      font-size: 0.92rem;
+      line-height: 1.35;
+      color: #5b4a24;
+      opacity: 0.9;
+    }
+
+    @media (max-width: 900px) {
+      .donut-left-grid { grid-template-columns: 1fr; }
+      .donut-right { grid-template-columns: repeat(3, 1fr); grid-template-rows: none; }
+    }
+
+    /* Unified chart:text ratio (1:2 text:chart -> 2fr 1fr) already set on .split-layout */
+  </style>
 </head>
+
 <body>
   <div class="page-wrapper">
     <div class="content-panel">
-      <h1>Olympic Medals by Country, Year and Season</h1>
+  <h1>Road to Glory- Olympic Medals</h1>
+
       <div class="container">
         <div class="map-area">
-        <div class="controls">
-          <label for="yearSlider">Year:</label>
-          <input id="yearSlider" type="range" min="0" max="0" step="1">
-          <span id="yearValue" aria-live="polite"></span>
-          <label for="seasonSelect">Season:</label>
-          <select id="seasonSelect"></select>
-          <!-- metric dropdown removed; bar chart fixed to Total medals -->
-        </div>
-        <div id="map"></div>
-  <div id="bar"></div>
-     <!-- Vega's built-in legend is used (positioned to the right of the map). -->
+          <div class="controls">
+            <label for="yearSlider">Year:</label>
+            <span class="slider-helper">Select an year</span>
+            <input id="yearSlider" type="range" min="0" max="0" step="1">
+            <span id="yearValue" aria-live="polite"></span>
+
+            <label for="seasonSelect">Season:</label>
+            <select id="seasonSelect"></select>
+          </div>
+
+          <!-- ======= MAP SECTION ======= -->
+          <div class="chart-container split-layout">
+            <div class="chart-section">
+              <h2>World Map — Olympic Medals by Country</h2>
+              <div id="map"></div>
+            </div>
+            <div class="text-section">
+              <h2>The Global Spirit of the Olympics</h2>
+              <p>
+                The Olympic Games began in <strong>ancient Greece around 776 BC</strong> as a festival to honor Zeus.
+                The modern Olympics were revived in 1896 by <strong>Pierre de Coubertin</strong>, with a vision to promote unity
+                and friendly competition among nations.
+              </p>
+              <p>
+                Today, more than <strong>200 countries</strong> compete in the Games, symbolized by the five interlocking rings —
+                representing the union of five continents. Each edition showcases how global collaboration and competition coexist.
+              </p>
+            </div>
+          </div>
+
+          <!-- ======= BAR SECTION ======= -->
+          <div class="chart-container split-layout">
+            <div class="chart-section">
+              <h2>Top Countries by Total Medals</h2>
+              <div id="bar"></div>
+            </div>
+            <div class="text-section">
+              <h2>Rising Powers of the Medal Table</h2>
+              <p>
+                Historically, nations like the <strong>United States, Russia, and China</strong> have dominated the medal counts.
+                However, emerging nations such as <strong>Japan, Australia, and Great Britain</strong> continue to rise with
+                strong investments in sports science and youth development.
+              </p>
+              <p>
+                Medal trends often reflect a nation’s social and economic growth — sports success often follows when countries
+                invest in <strong>infrastructure, equality, and opportunity</strong>.
+              </p>
+            </div>
+          </div>
+
+          <!-- ======= BUBBLE SECTION ======= -->
+          <div class="chart-container split-layout">
+            <div class="chart-section">
+              <h2>Medal Totals (Bubble)</h2>
+              <div id="bubble"></div>
+            </div>
+            <div class="text-section">
+              <h2>Beyond Numbers — Stories Behind the Medals</h2>
+              <p>
+                Every bubble represents not just medals, but <strong>human stories</strong> — years of discipline, perseverance,
+                and national pride. The Olympics go beyond competition; they celebrate the diversity and shared passion of humanity.
+              </p>
+              <p>
+                Whether it’s a sprinter breaking a world record or a small nation earning its first medal, each success inspires
+                millions and strengthens the spirit of unity the Games were built upon.
+              </p>
+            </div>
+          </div>
+
+          <!-- ======= DONUT SECTION ======= -->
+          <div class="chart-container split-layout donut-custom">
+            <!-- Left: big donut + explanatory text side by side -->
+            <div class="chart-section">
+              <h2>Medal Composition by Country</h2>
+              <div class="chart-controls">
+                <label for="countrySelect">Country:</label>
+                <select id="countrySelect"></select>
+              </div>
+              <div class="donut-left-grid">
+                <div class="big-donut"><div id="donut"></div><div id="donut-stats" class="donut-stats"></div></div>
+                <div class="text-section">
+                  <h2>What’s inside the medal haul?</h2>
+                  <p>
+                    This donut shows the <strong>breakdown of Gold, Silver, and Bronze</strong> medals for the selected country
+                    in the chosen year and season. It helps compare <em>quality vs. quantity</em>—for example, two countries with the
+                    same total can differ a lot in how many golds they earned.
+                  </p>
+                  <p>
+                    Use the dropdown to switch countries. The choices reflect only those who won medals in this edition.
+                  </p>
+                </div>
+              </div>
+            </div>
+            <!-- Right: three supporting donuts together -->
+            <div class="donut-right">
+              <div class="mini-card">
+                <h3>Global Medal Mix</h3>
+                  <p class="mini-desc">Overall split of Gold, Silver, and Bronze medals across all countries for the selected year and season.</p>
+                <div id="donut-global"></div>
+              </div>
+              <div class="mini-card">
+                <h3>Host vs Rest</h3>
+                  <p class="mini-desc">How the host nation's medal share compares to the combined total of all other countries in this edition.</p>
+                <div id="donut-host"></div>
+              </div>
+              <div class="mini-card">
+                <h3>Top 5 Countries Share</h3>
+                  <p class="mini-desc">Share of medals captured by the top five countries combined versus the rest of the field.</p>
+                <div id="donut-topshare"></div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
   </div>
 
+  <!-- Scripts -->
   <script src="https://cdn.jsdelivr.net/npm/papaparse@5.3.2/papaparse.min.js"></script>
   <script src="./js/main.js"></script>
 </body>
 </html>
-
