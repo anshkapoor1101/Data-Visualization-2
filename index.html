@@ -227,6 +227,12 @@
   .stat-chip.silver { background: #f2f2f2; color: #555; }
   .stat-chip.bronze { background: #f6e0cc; color: #6b3e20; }
   .stat-chip.total { background: #efe6cf; color: #4a3d14; }
+  .stat-chip svg { width: 16px; height: 16px; margin-right: 6px; vertical-align: -3px; }
+  .per-capita-title { width: 100%; margin-top: 12px; font-weight: 600; color: #2b1f07; text-align: center; font-size: 1.05rem; }
+  #per-capita-bar-chart { width: 100%; margin-top: 20px; }
+  .percap-card { background: #fffaf0; border: 1px solid #e5dcc7; border-radius: 12px; padding: 0.5rem 0.75rem; grid-column: 1 / 2; }
+  .percap-text-card { background: #fffaf0; border: 1px solid #e5dcc7; border-radius: 12px; padding: 0.75rem 1rem; grid-column: 2 / 3; }
+  .rings-wrap svg { height: 84px; margin-left: 8px; vertical-align: -18px; }
 
     .donut-right {
       display: grid;
@@ -269,7 +275,17 @@
 <body>
   <div class="page-wrapper">
     <div class="content-panel">
-  <h1>Road to Glory- Olympic Medals</h1>
+  <h1>Road to Glory — Olympic Medals
+    <span class="rings-wrap" aria-hidden="true">
+      <svg viewBox="0 0 220 50" xmlns="http://www.w3.org/2000/svg" role="img">
+        <circle cx="25" cy="25" r="18" fill="none" stroke="#0085C7" stroke-width="5"/>
+        <circle cx="65" cy="25" r="18" fill="none" stroke="#000000" stroke-width="5"/>
+        <circle cx="105" cy="25" r="18" fill="none" stroke="#DF0024" stroke-width="5"/>
+        <circle cx="45" cy="40" r="18" fill="none" stroke="#F4C300" stroke-width="5"/>
+        <circle cx="85" cy="40" r="18" fill="none" stroke="#009F3D" stroke-width="5"/>
+      </svg>
+    </span>
+  </h1>
 
       <div class="container">
         <div class="map-area">
@@ -364,6 +380,22 @@
                     Use the dropdown to switch countries. The choices reflect only those who won medals in this edition.
                   </p>
                 </div>
+                <div class="percap-card"><div id="per-capita-title" class="per-capita-title"></div><div id="per-capita-bar-chart"></div></div>
+                <div class="percap-text-card">
+                  <h2>Reading the Per-Capita Trend</h2>
+                  <p>
+                    This line shows how many medals a country wins per <strong>one million people</strong> over time for the selected
+                    season. It helps compare performance fairly between countries of very different sizes.
+                  </p>
+                  <ul style="margin: 0.25rem 0 0.25rem 1rem; padding: 0;">
+                    <li><strong>Higher</strong> line = more medals relative to population.</li>
+                    <li>Points only appear for years with both <em>medals</em> and <em>population</em> data.</li>
+                    <li>Switch countries via the dropdown to see how the shape changes.</li>
+                  </ul>
+                  <p style="margin-top: 0.5rem; color:#6b5b2e; font-size: 0.95rem;">
+                    Tip: Peaks often align with <em>gold-heavy</em> editions or home advantage.
+                  </p>
+                </div>
               </div>
             </div>
             <!-- Right: three supporting donuts together -->
@@ -385,6 +417,84 @@
               </div>
             </div>
           </div>
+            
+            <!-- ======= INSIGHTS & NOTES (fills whitespace) ======= -->
+            <style>
+              .info-grid {
+                display: grid;
+                grid-template-columns: repeat(4, 1fr);
+                gap: 1rem;
+                margin-top: 1.25rem;
+              }
+              .info-card {
+                background: #fffaf0;
+                border: 1px solid #e5dcc7;
+                border-radius: 12px;
+                padding: 0.9rem 1rem;
+                box-shadow: 0 2px 6px rgba(0,0,0,0.06);
+                min-height: 90px;
+              }
+              .info-card h4 {
+                margin: 0 0 6px 0;
+                font-family: 'Poppins', sans-serif;
+                font-size: 1rem;
+                color: #2b1f07;
+              }
+              .info-card p { margin: 0; font-size: 0.96rem; color: #4a3d14; }
+              .info-muted { font-size: 0.88rem; color: #6a5a30; opacity: 0.95; margin-top: 0.75rem; }
+              @media (max-width: 900px) { .info-grid { grid-template-columns: 1fr 1fr; } }
+              @media (max-width: 520px) { .info-grid { grid-template-columns: 1fr; } }
+            </style>
+
+            <div class="info-grid" id="insights">
+              <div class="info-card">
+                <h4>🥇 Top Country</h4>
+                <p id="insight-top">—</p>
+              </div>
+              <div class="info-card">
+                <h4>🏟️ Host City & Country</h4>
+                <p id="insight-host">—</p>
+              </div>
+              <div class="info-card">
+                <h4>🌍 Medal-Winning Countries</h4>
+                <p id="insight-medalists">—</p>
+              </div>
+              <div class="info-card">
+                <h4>🏅 Total Medals Awarded</h4>
+                <p id="insight-total">—</p>
+              </div>
+            </div>
+
+            <div class="info-muted">
+              Data source: aggregated Olympic results (sample), Map: Natural Earth. Names are harmonized (e.g., ROC → Russia; Chinese Taipei → Taiwan) for mapping consistency.
+            </div>
+
+            <!-- ======= METADATA ======= -->
+            <div class="info-grid" id="metadata" style="margin-top: 1.25rem;">
+              <div class="info-card">
+                <h4>👥 Collaborators</h4>
+                <p>Andrei Novikov (Owner)</p>
+              </div>
+              <div class="info-card">
+                <h4>✍️ Authors</h4>
+                <p>Author Name; Andrei Novikov</p>
+              </div>
+              <div class="info-card">
+                <h4>🧑‍💼 Bio</h4>
+                <p><a href="https://linkedin.com/in/andreinovikov" target="_blank" rel="noopener">linkedin.com/in/andreinovikov</a></p>
+              </div>
+              <div class="info-card">
+                <h4>🗓️ Coverage</h4>
+                <p><strong>Temporal Start:</strong> 01/01/1900</p>
+                <p><strong>Temporal End:</strong> 12/31/2022</p>
+                <p><strong>Geospatial:</strong> Worldwide</p>
+              </div>
+              <div class="info-card">
+                <h4>📚 Provenance</h4>
+                <p><strong>Sources:</strong> <a href="https://olympics.com/" target="_blank" rel="noopener">olympics.com</a></p>
+                <p><strong>Population (per-capita):</strong> World Bank — <a href="https://data.worldbank.org/indicator/SP.POP.TOTL" target="_blank" rel="noopener">Population, total (SP.POP.TOTL)</a> (from <code>population.csv</code>)</p>
+              </div>
+            </div>
         </div>
       </div>
     </div>

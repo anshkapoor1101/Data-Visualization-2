@@ -53,6 +53,22 @@ function normalizeCountryForMap(name) {
   }
 }
 
+// Normalize CSV country names to match Population CSV (World Bank-style) naming
+function normalizeCountryForPopulation(name) {
+  if (!name) return name;
+  let n = String(name).trim();
+  // Handle common differences between Olympic CSV and World Bank population names
+  n = n.replace('United States of America', 'United States')
+       .replace('ROC', 'Russian Federation')
+       .replace('Russia', 'Russian Federation')
+       .replace('Czechia', 'Czech Republic')
+       .replace('Hong Kong, China', 'Hong Kong SAR, China')
+       .replace('Great Britain', 'United Kingdom')
+       .replace("Côte d'Ivore", "Cote d'Ivoire")
+       .replace("Côte d'Ivoire", "Cote d'Ivoire");
+  return n;
+}
+
 // load CSV once and populate controls
 Papa.parse('./data/olympic_games.csv', {
   header: true,
@@ -292,7 +308,48 @@ async function updateAndRender() {
       try { renderGlobalDonut(year, season); } catch(e) { console.error('renderGlobalDonut error', e); }
       try { renderHostVsRestDonut(year, season); } catch(e) { console.error('renderHostVsRestDonut error', e); }
       try { renderTopShareDonut(year, season); } catch(e) { console.error('renderTopShareDonut error', e); }
+      try { renderPerCapitaLineChart(year, season); } catch(e) { console.error('renderPerCapitaLineChart error', e); }
+      try { updateInsightsFooter(year, season); } catch(e) { console.error('updateInsightsFooter error', e); }
     });
+}
+
+// Populate the Insights & Notes footer with dynamic facts
+function updateInsightsFooter(year, season) {
+  const topEl = document.getElementById('insight-top');
+  const hostEl = document.getElementById('insight-host');
+  const medalistsEl = document.getElementById('insight-medalists');
+  const totalEl = document.getElementById('insight-total');
+  if (!topEl || !hostEl || !medalistsEl || !totalEl) return;
+
+  if (!aggregated || aggregated.length === 0) {
+    topEl.textContent = 'No data';
+    hostEl.textContent = '—';
+    medalistsEl.textContent = '—';
+    totalEl.textContent = '—';
+    return;
+  }
+
+  // Top country by total medals
+  const top = aggregated.slice().sort((a,b) => (b.total||0) - (a.total||0))[0];
+  if (top && (top.total||0) > 0) {
+    topEl.textContent = `${top.country} — ${top.total} total (${top.gold||0}G/${top.silver||0}S/${top.bronze||0}B)`;
+  } else {
+    topEl.textContent = 'No medal-winning country';
+  }
+
+  // Host city & country from CSV for this edition
+  let hostCity = '—', hostCountry = '—';
+  if (csvData) {
+    const row = csvData.find(d => d.year == year && d.games_type == season);
+    if (row) { hostCity = row.host_city || '—'; hostCountry = row.host_country || '—'; }
+  }
+  hostEl.textContent = `${hostCity}, ${hostCountry}`;
+
+  // Medal-winning countries count and total medal count
+  const medalistsCount = aggregated.filter(d => (d.total||0) > 0).length;
+  const totalMedals = aggregated.reduce((s,d) => s + (d.total||0), 0);
+  medalistsEl.textContent = `${medalistsCount} countries`;
+  totalEl.textContent = `${totalMedals} medals`;
 }
 
 // Render a Top-N horizontal bar chart of countries by total medals for current filters
@@ -440,8 +497,9 @@ function populateCountryDropdownAndRenderDonut(year, season) {
   sel.value = idx >= 0 ? prev : medalists[0];
 
   // wire change handler (idempotent: remove existing then add)
-  sel.onchange = () => renderDonutChart(year, season, sel.value);
+  sel.onchange = () => { renderDonutChart(year, season, sel.value); renderPerCapitaLineChart(year, season); };
   renderDonutChart(year, season, sel.value);
+  renderPerCapitaLineChart(year, season);
 }
 
 // Donut chart: medal composition for a single country
@@ -485,9 +543,18 @@ function renderDonutChart(year, season, country) {
     if (statsEl) {
       const total = (rec.total||0);
       statsEl.innerHTML = `
-        <span class="stat-chip gold">Gold: ${rec.gold||0}</span>
-        <span class="stat-chip silver">Silver: ${rec.silver||0}</span>
-        <span class="stat-chip bronze">Bronze: ${rec.bronze||0}</span>
+        <span class="stat-chip gold">
+          <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true"><circle cx="12" cy="12" r="7.5" fill="#FFD700" stroke="#b38f00" stroke-width="1.5"/></svg>
+          Gold: ${rec.gold||0}
+        </span>
+        <span class="stat-chip silver">
+          <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true"><circle cx="12" cy="12" r="7.5" fill="#C0C0C0" stroke="#8e8e8e" stroke-width="1.5"/></svg>
+          Silver: ${rec.silver||0}
+        </span>
+        <span class="stat-chip bronze">
+          <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true"><circle cx="12" cy="12" r="7.5" fill="#CD7F32" stroke="#8a5322" stroke-width="1.5"/></svg>
+          Bronze: ${rec.bronze||0}
+        </span>
         <span class="stat-chip total">Total: ${total}</span>
       `;
     }
@@ -658,68 +725,94 @@ function renderStackedBarChart(year, season) {
   vegaEmbed(el, spec, {actions: false}).catch(console.error);
 }
 
-// New Chart 3: Medals Per Capita (Bar Chart)
-function renderPerCapitaBarChart(year, season) {
+// Per-Capita (Line Chart): medals per million over time for selected country and season
+function renderPerCapitaLineChart(year, season) {
   const el = document.getElementById('per-capita-bar-chart');
-  if (!el || !populationData || !aggregated) { el.innerHTML = ''; return; }
+  const titleEl = document.getElementById('per-capita-title');
+  if (!el) return;
+  if (!populationData || !csvData) { el.innerHTML = '<div style="padding:12px;color:#666">Population data not loaded.</div>'; return; }
 
-  const popMap = new Map();
-  const yStr = String(year);
-  populationData.forEach(r => {
-    if (r && String(r['Year'] || r['year']).trim() === yStr) {
-      const name = (r['Country Name'] || r['country'] || '').trim();
-      const val = Number(r['Value'] || r['value']);
-      if (name && !isNaN(val) && val > 0) popMap.set(name, val);
-    }
-  });
-  
-  function normalize(name) {
-    if (!name) return name;
-    return name.replace('United States of America','United States')
-      .replace('ROC','Russian Federation')
-      .replace('Czechia','Czech Republic')
-      .replace('Hong Kong, China','Hong Kong SAR, China')
-      .replace('Great Britain','United Kingdom')
-      .replace("Côte d'Ivoire","Cote d'Ivoire");
+  // Determine selected country from dropdown (fallback to top medalist)
+  let country = null;
+  const sel = document.getElementById('countrySelect');
+  if (sel && sel.value) country = sel.value;
+  if (!country && aggregated && aggregated.length) country = aggregated.slice().sort((a,b)=> (b.total||0)-(a.total||0))[0].country;
+  if (!country) { if (titleEl) titleEl.textContent = ''; el.innerHTML = '<div style="padding:12px;color:#666">No country selected.</div>'; return; }
+
+  // Update dynamic title/caption above the chart
+  if (titleEl) {
+    titleEl.textContent = 'Medals per Million — ' + country;
   }
 
-  const perCapitaData = [];
-  aggregated.forEach(d => {
-    const pop = popMap.get(d.country) || popMap.get(normalize(d.country));
-    if (pop) {
-      perCapitaData.push({
-        country: d.country,
-        total: d.total,
-        population: pop,
-        medals_per_million: (d.total / pop) * 1000000
-      });
+  // Aggregate medals by year for this country and season
+  const perYear = new Map();
+  csvData.forEach(r => {
+    if (r.country === country && r.games_type === season) {
+      const y = Number(r.year);
+      const total = (Number(r.gold)||0) + (Number(r.silver)||0) + (Number(r.bronze)||0);
+      perYear.set(y, (perYear.get(y)||0) + total);
+    }
+  });
+  const normName = normalizeCountryForPopulation(country);
+  // Build population index for this country
+  const popByYear = new Map();
+  populationData.forEach(p => {
+    const name = (p['Country Name'] || p['country'] || '').trim();
+    if (name === normName) {
+      const y = Number(p['Year'] || p['year']);
+      const v = Number(p['Value'] || p['value']);
+      if (!isNaN(y) && !isNaN(v) && v > 0) popByYear.set(y, v);
     }
   });
 
-  const top10 = perCapitaData.sort((a, b) => b.medals_per_million - a.medals_per_million).slice(0, 10);
+  const rows = Array.from(perYear.entries())
+    .map(([y, total]) => ({
+      year: Number(y),
+      total: Number(total),
+      population: popByYear.get(Number(y)),
+      medals_per_million: popByYear.get(Number(y)) ? (Number(total) / popByYear.get(Number(y))) * 1e6 : null
+    }))
+    .filter(d => d.medals_per_million != null)
+    .sort((a,b) => a.year - b.year);
 
-  if (top10.length === 0) {
-    el.innerHTML = '<div style="padding:12px;color:#666">No population-matching data.</div>';
+  if (rows.length === 0) {
+    el.innerHTML = '<div style="padding:12px;color:#666">No per-capita data available for ' + country + ' (' + season + ').</div>';
     return;
   }
 
   const spec = {
     "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
+    "background": "#f6eedc",
     "width": "container",
-    "height": 300,
-    "data": {"values": top10},
-    "mark": "bar",
+    "height": 320,
+    "padding": 5,
+    "data": {"values": rows},
+    "config": {
+      "axis": {
+        "labelFontSize": 14,
+        "titleFontSize": 15,
+        "labelFontWeight": 600,
+        "labelColor": "#2b1f07",
+        "titleColor": "#2b1f07",
+        "grid": true,
+        "gridColor": "#e5dcc7",
+        "gridOpacity": 1
+      }
+    },
+    "layer": [
+      { "mark": {"type": "line", "color": "#4c78a8", "strokeWidth": 2.5, "point": false} },
+      { "mark": {"type": "point", "filled": true, "size": 85, "color": "#d4a017", "stroke": "#fff", "strokeWidth": 1} }
+    ],
     "encoding": {
-      "y": {"field": "country", "type": "ordinal", "sort": "-x", "title": null},
-      "x": {"field": "medals_per_million", "type": "quantitative", "title": "Medals per Million People"},
-      "color": {"value": "#1f77b4"},
+      "x": {"field": "year", "type": "quantitative", "title": country + " — Year", "axis": {"tickCount": 6, "labelAngle": 0}},
+      "y": {"field": "medals_per_million", "type": "quantitative", "title": "Medals per Million", "axis": {"format": ".2f"}, "scale": {"nice": true}},
       "tooltip": [
-        {"field": "country", "type": "nominal"},
-        {"field": "medals_per_million", "type": "quantitative", "format": ".3f"},
+        {"field": "year", "type": "quantitative"},
+        {"field": "medals_per_million", "type": "quantitative", "title": "Per Million", "format": ".3f"},
         {"field": "total", "type": "quantitative", "title": "Total Medals"},
         {"field": "population", "type": "quantitative", "format": ","}
       ]
     }
   };
-  vegaEmbed(el, spec, {actions: false}).catch(console.error);
+  vegaEmbed(el, spec, {actions:false}).catch(console.error);
 }
